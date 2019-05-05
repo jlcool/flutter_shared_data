@@ -55,6 +55,7 @@ public class FlutterSharedDataPlugin implements MethodCallHandler {
     public void onMethodCall(MethodCall call, Result result) {
         if (call.method.equals("getSharedPath")) {
             result.success(sharedText);
+            sharedText=null;
         } else {
             result.notImplemented();
         }
