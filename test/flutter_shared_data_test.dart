@@ -16,6 +16,6 @@ void main() {
   });
 
   test('getPlatformVersion', () async {
-    expect(await FlutterSharedData.platformVersion, '42');
+    expect(await FlutterSharedData.getSharedPath, '42');
   });
 }
