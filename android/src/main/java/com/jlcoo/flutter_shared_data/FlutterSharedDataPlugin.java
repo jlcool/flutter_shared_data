@@ -37,15 +37,15 @@ public class FlutterSharedDataPlugin implements MethodCallHandler {
         String type = intent.getType();
 
         if (Intent.ACTION_VIEW.equals(action) && type != null) {
-            if ("text/plain".equals(type) || "text/csv".equals(type)) {
+//            if ("text/plain".equals(type) || "text/csv".equals(type)) {
                 handleSendText(context, intent); // Handle text being sent
-            }
+//            }
         }
 
         if (Intent.ACTION_SEND.equals(action) && type != null) {
-            if ("text/plain".equals(type) || "text/csv".equals(type)) {
+//            if ("text/plain".equals(type) || "text/csv".equals(type)) {
                 sharedText(context, intent); // Handle text being sent
-            }
+//            }
         }
         final MethodChannel channel = new MethodChannel(registrar.messenger(), "flutter_shared_data");
         channel.setMethodCallHandler(new FlutterSharedDataPlugin());
