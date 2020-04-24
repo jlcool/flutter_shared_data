@@ -3,13 +3,17 @@ package com.jlcoo.flutter_shared_data;
 import android.app.Activity;
 import android.content.Context;
 import android.content.Intent;
+import android.database.Cursor;
 import android.net.Uri;
+import android.provider.MediaStore;
+import android.text.TextUtils;
 
 import java.io.File;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
+import java.io.OutputStream;
 import java.io.OutputStreamWriter;
 
 import io.flutter.plugin.common.MethodCall;
@@ -62,73 +66,117 @@ public class FlutterSharedDataPlugin implements MethodCallHandler {
     }
 
     static void handleSendText(final Context context, Intent intent) {
-        String path = getPathFromUri(context, intent.getData());
-        if (path != null && (new File(path).canRead())) {
-            sharedText = path;
+        //取出文件uri
+        Uri uri = intent.getData();
+        if (uri == null) {
+            uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        }
+        String filePath = getFilePathFromContentUri(context,uri);
+        if (filePath != null && (new File(filePath).canRead())) {
+            sharedText = filePath;
         }
 //        sharedText = intent.getStringExtra(Intent.Extra);
     }
 
     static void sharedText(final Context context, Intent intent) {
-        Uri uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
-        String path = getPathFromUri(context, uri);
-        if (path != null && (new File(path).canRead())) {
-            sharedText = path;
+        Uri uri = intent.getData();
+        if (uri == null) {
+            uri = intent.getParcelableExtra(Intent.EXTRA_STREAM);
+        }
+        String filePath = getFilePathFromContentUri(context,uri);
+        if (filePath != null && (new File(filePath).canRead())) {
+            sharedText = filePath;
         }
     }
 
-    static String getPathFromUri(final Context context, final Uri uri) {
+    /**
+     * 从uri获取path
+     *
+     * @param uri content://media/external/file/109009
+     *            <p>
+     *            FileProvider适配
+     *            content://com.tencent.mobileqq.fileprovider/external_files/storage/emulated/0/Tencent/QQfile_recv/
+     *            content://com.tencent.mm.external.fileprovider/external/tencent/MicroMsg/Download/
+     */
+    private static String getFilePathFromContentUri(Context context, Uri uri) {
+        if (null == uri) return null;
+        String data = null;
 
-        return getPathFromRemoteUri(context, uri);
-
+        String[] filePathColumn = {MediaStore.MediaColumns.DATA, MediaStore.MediaColumns.DISPLAY_NAME};
+        Cursor cursor = context.getContentResolver().query(uri, filePathColumn, null, null, null);
+        if (null != cursor) {
+            if (cursor.moveToFirst()) {
+                int index = cursor.getColumnIndex(MediaStore.MediaColumns.DATA);
+                if (index > -1) {
+                    data = cursor.getString(index);
+                } else {
+                    int nameIndex = cursor.getColumnIndex(MediaStore.MediaColumns.DISPLAY_NAME);
+                    String fileName = cursor.getString(nameIndex);
+                    data = getPathFromInputStreamUri(context, uri, fileName);
+                }
+            }
+            cursor.close();
+        }
+        return data;
     }
 
-
-    private static String getPathFromRemoteUri(final Context context, final Uri uri) {
-        // The code below is why Java now has try-with-resources and the Files utility.
-        File file = null;
+    /**
+     * 用流拷贝文件一份到自己APP私有目录下
+     *
+     * @param context
+     * @param uri
+     * @param fileName
+     */
+    private static String getPathFromInputStreamUri(Context context, Uri uri, String fileName) {
         InputStream inputStream = null;
-        InputStreamReader streamReader = null;
-        OutputStreamWriter outputStream = null;
-        boolean success = false;
-        try {
-            inputStream = context.getContentResolver().openInputStream(uri);
-            streamReader = new InputStreamReader(inputStream);
-            String prefix = uri.getPath().substring(uri.getPath().lastIndexOf("."));
-            file = File.createTempFile("import", prefix, context.getCacheDir());
-            outputStream = new OutputStreamWriter(new FileOutputStream(file));
+        String filePath = null;
 
-            if (inputStream != null) {
-                copy(streamReader, outputStream);
-                success = true;
-            }
-        } catch (IOException ignored) {
-        } finally {
+        if (uri.getAuthority() != null) {
             try {
-                if (inputStream != null) inputStream.close();
-                if (streamReader != null) streamReader.close();
-                ;
-            } catch (IOException ignored) {
-            }
-            try {
-                if (outputStream != null) outputStream.close();
-            } catch (IOException ignored) {
-                // If closing the output stream fails, we cannot be sure that the
-                // target file was written in full. Flushing the stream merely moves
-                // the bytes into the OS, not necessarily to the file.
-                success = false;
+                inputStream = context.getContentResolver().openInputStream(uri);
+                File file = createTemporalFileFrom(context, inputStream, fileName);
+                filePath = file.getPath();
+
+            } catch (Exception e) {
+            } finally {
+                try {
+                    if (inputStream != null) {
+                        inputStream.close();
+                    }
+                } catch (Exception e) {
+                }
             }
         }
-        return success ? file.getPath() : null;
+
+        return filePath;
     }
 
-    private static void copy(InputStreamReader in, OutputStreamWriter out) throws IOException {
+    private static File createTemporalFileFrom(Context context, InputStream inputStream, String fileName)
+            throws IOException {
+        File targetFile = null;
 
-        char[] buffer = new char[1024];//构造一个长度为1024的字节数组
-        while (in.read(buffer) != -1) {//读取
-            //写入另一个文件
-            out.write(buffer);
+        if (inputStream != null) {
+            int read;
+            byte[] buffer = new byte[8 * 1024];
+            //自己定义拷贝文件路径
+            targetFile = new File(context.getExternalCacheDir(), fileName);
+            if (targetFile.exists()) {
+                targetFile.delete();
+            }
+            OutputStream outputStream = new FileOutputStream(targetFile);
+
+            while ((read = inputStream.read(buffer)) != -1) {
+                outputStream.write(buffer, 0, read);
+            }
+            outputStream.flush();
+
+            try {
+                outputStream.close();
+            } catch (IOException e) {
+                e.printStackTrace();
+            }
         }
-        out.flush();
+
+        return targetFile;
     }
 }
